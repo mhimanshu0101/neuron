@@ -4,12 +4,14 @@ from uuid import UUID, uuid1
 
 from django.conf import settings
 from django.http.request import QueryDict
+from neuron.models import APIKey
 from rest_framework.exceptions import (APIException, PermissionDenied, NotAuthenticated)
 from rest_framework.views import APIView
 
 from neuron.exceptions import ServiceNotRegistered, ValidationError
 from neuron.exceptions import ValidationError as NeuronValidationError
 from neuron.mixins import GetRegistryMixin
+from neuron.http.response import response
 
 
 API_KEYS_REGEX_LIST = [
@@ -47,6 +49,62 @@ class ApiView(GetRegistryMixin, APIView):
         if message:
             raise PermissionDenied(detail=message)
         raise PermissionDenied(detail=message)
+
+    def check_api_keys(self, request):
+        """
+        Takes request object; checks if the API keys are present in the request or not.
+        If valid API keys are present in the request then it provides access to the endpoint,
+        otherwise, it rejects the request to access the endpoint.
+        """
+        api_key, api_obj = request.META.get('HTTP_API_KEY'), None
+        api_secret_key = request.META.get('HTTP_SECRET_KEY')
+        if api_key and api_secret_key:
+            # validate the API and secret keys.
+            api_key_bool = self._validate_api_key(api_key)
+            if not api_key_bool:
+                return False, self.api_key_message
+            secret_key_bool = self._validate_api_secret_key(api_secret_key)
+            if not secret_key_bool:
+                return False, self.api_secret_key_message
+            try:
+                api_obj = APIKey.objects.get(
+                    api_key=api_key,
+                    api_secret_key=api_secret_key,
+                    is_active=True,
+                )
+                if api_obj:
+                    self.app(request, api_obj)
+                    return True, ''
+            except APIKey.DoesNotExist:
+                self.app(request, api_obj)
+                return False, self.message
+        else:
+            self.app(request, api_obj)
+            return False, self.message
+
+    def call_service(self, *args, **kwargs):
+        "Fetch service class from registry and call it."
+        try:
+            service_class = self.get_registry()[kwargs['service']]
+        except ServiceNotRegistered:
+            return response.NotFound()
+
+            # TODO - Complete this call_service with GlueRequest, 
+
+    def initial(self, request, *args, **kwargs):
+        "Runs anything that needs to occur prior to calling the method handler"
+        bool_value, message =self.check_api_keys(request)
+        if bool_value:
+            super(APIView, self).initial(request, *args, **kwargs)
+        else:
+            self.app_permission_denied(request, message)
+
+    def get(self, *args, **kwargs):
+        return self.call_service(*args, **kwargs)
+
+    def post(self, *args, **kwargs):
+        return self.call_service(*args, **kwargs)
+
 
     def _validate_api_key(self, api_key):
         """

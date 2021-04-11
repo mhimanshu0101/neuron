@@ -59,3 +59,13 @@ class NoContent(Response):
     response message's body.
     """
     status_code = 204
+
+
+class NotFound(Response):
+    """404 Not Found
+
+    Must be used when a client's URI cannot be mapped to a resource.
+    The 404 error status code indicates that the REST API can't map the
+    client's URI to a resource.
+    """
+    status_code = 404

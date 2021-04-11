@@ -7,3 +7,14 @@ __pycache__/
 .Python
 .idea/
 venv/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+parts/
+sdist/
+var/
+*.egg-info/
+.installed.cfg
+*.egg
